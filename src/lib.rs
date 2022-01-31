@@ -19,8 +19,8 @@ mod std_types;
 ///
 /// Guarantees that the value will be between 0 and 100 inclusive.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-#[cfg_attr(feature = "async-proto", derive(Protocol))]
-#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
+#[cfg_attr(feature = "async-proto", derive(Protocol))] //TODO check bounds on read
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))] //TODO check bounds on deserialize
 #[cfg_attr(feature = "serde", serde(transparent))]
 pub struct Percent(u8);
 
