@@ -7,6 +7,7 @@ use {
     std::convert::TryFrom,
     async_trait::async_trait,
 };
+#[cfg(feature = "async-proto")] use async_proto::Protocol;
 #[cfg(feature = "serde")] use serde::{
     Deserialize,
     Serialize,
@@ -18,6 +19,7 @@ mod std_types;
 ///
 /// Guarantees that the value will be between 0 and 100 inclusive.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "async-proto", derive(Protocol))]
 #[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 #[cfg_attr(feature = "serde", serde(transparent))]
 pub struct Percent(u8);
