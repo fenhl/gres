@@ -18,6 +18,7 @@ use {
     },
 };
 
+#[cfg(feature = "cli")] pub mod cli;
 mod std_types;
 
 /// A type representing a percentage.
