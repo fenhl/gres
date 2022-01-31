@@ -1,6 +1,6 @@
 use crate::{
     Percent,
-    Progress
+    Progress,
 };
 
 impl Progress for bool {

@@ -1,15 +1,15 @@
 //! This library helps with estimating the progress of a task.
 
-#![deny(missing_docs, rust_2018_idioms, unused, unused_import_braces, unused_qualifications, warnings)]
+#![deny(missing_docs, rust_2018_idioms, unused, unused_crate_dependencies, unused_import_braces, unused_lifetimes, unused_qualifications, warnings)]
+#![forbid(unsafe_code)]
 
 use {
     std::convert::TryFrom,
-    async_trait::async_trait
+    async_trait::async_trait,
 };
-#[cfg(feature = "serde")]
-use serde::{
+#[cfg(feature = "serde")] use serde::{
     Deserialize,
-    Serialize
+    Serialize,
 };
 
 mod std_types;
