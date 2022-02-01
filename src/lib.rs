@@ -50,9 +50,9 @@ macro_rules! percent_conversion {
                 type Error = $T;
 
                 #[allow(unused_comparisons)]
-                fn try_from(value: $T) -> Result<Percent, $T> {
+                fn try_from(value: $T) -> Result<Self, $T> {
                     if value >= 0 && value <= 100 {
-                        Ok(Percent(value as u8))
+                        Ok(Self(value as u8))
                     } else {
                         Err(value)
                     }
@@ -60,13 +60,21 @@ macro_rules! percent_conversion {
             }
 
             impl From<Percent> for $T {
-                fn from(Percent(value): Percent) -> $T { value as $T }
+                fn from(Percent(value): Percent) -> Self { value as Self }
             }
         )*
     };
 }
 
 percent_conversion!(u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize);
+
+impl From<Percent> for f32 {
+    fn from(Percent(value): Percent) -> Self { value.into() }
+}
+
+impl From<Percent> for f64 {
+    fn from(Percent(value): Percent) -> Self { value.into() }
+}
 
 /// A type implementing this trait can estimate the progress of a task.
 pub trait Progress {
