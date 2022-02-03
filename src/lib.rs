@@ -10,7 +10,6 @@ use {
 #[cfg(feature = "async-proto")] use async_proto::Protocol;
 #[cfg(feature = "serde")] use serde::{
     Serialize,
-    Serializer,
     de::{
         Deserialize,
         Deserializer,
@@ -26,6 +25,7 @@ mod std_types;
 /// Guarantees that the value will be between 0 and 100 inclusive.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "async-proto", derive(Protocol), async_proto(via = u8, map_err = async_proto::ReadError::UnknownVariant8))]
+#[cfg_attr(feature = "serde", derive(Serialize), serde(transparent))]
 pub struct Percent(u8);
 
 impl Percent {
@@ -97,20 +97,12 @@ impl From<Percent> for f64 {
     fn from(Percent(value): Percent) -> Self { value.into() }
 }
 
-// Deserialize and Serialize are manually implememted because of some weird attribute parsing conflict with multiple conditional derives
-
+// Deserialize is manually implememted to generate an error for out-of-range values
 #[cfg(feature = "serde")]
 impl<'de> Deserialize<'de> for Percent {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         u8::deserialize(deserializer)
             .and_then(|value| Self::try_from(value).map_err(|_| D::Error::invalid_value(Unexpected::Unsigned(value.into()), &"value between 0 and 100 (inclusive)")))
-    }
-}
-
-#[cfg(feature = "serde")]
-impl Serialize for Percent {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        self.0.serialize(serializer)
     }
 }
 
