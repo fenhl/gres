@@ -9,8 +9,14 @@ use {
 };
 #[cfg(feature = "async-proto")] use async_proto::Protocol;
 #[cfg(feature = "serde")] use serde::{
-    Deserialize,
     Serialize,
+    Serializer,
+    de::{
+        Deserialize,
+        Deserializer,
+        Error as _,
+        Unexpected,
+    },
 };
 
 mod std_types;
@@ -19,9 +25,7 @@ mod std_types;
 ///
 /// Guarantees that the value will be between 0 and 100 inclusive.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-#[cfg_attr(feature = "async-proto", derive(Protocol))] //TODO check bounds on read
-#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))] //TODO check bounds on deserialize
-#[cfg_attr(feature = "serde", serde(transparent))]
+#[cfg_attr(feature = "async-proto", derive(Protocol), async_proto(via = u8, map_err = async_proto::ReadError::UnknownVariant8))]
 pub struct Percent(u8);
 
 impl Percent {
@@ -59,8 +63,25 @@ macro_rules! percent_conversion {
                 }
             }
 
+            impl<'a> TryFrom<&'a $T> for Percent {
+                type Error = $T;
+
+                #[allow(unused_comparisons)]
+                fn try_from(&value: &$T) -> Result<Self, $T> {
+                    if value >= 0 && value <= 100 {
+                        Ok(Self(value as u8))
+                    } else {
+                        Err(value)
+                    }
+                }
+            }
+
             impl From<Percent> for $T {
                 fn from(Percent(value): Percent) -> Self { value as Self }
+            }
+
+            impl<'a> From<&'a Percent> for $T {
+                fn from(&Percent(value): &Percent) -> Self { value as Self }
             }
         )*
     };
@@ -75,6 +96,25 @@ impl From<Percent> for f32 {
 impl From<Percent> for f64 {
     fn from(Percent(value): Percent) -> Self { value.into() }
 }
+
+// Deserialize and Serialize are manually implememted because of some weird attribute parsing conflict with multiple conditional derives
+
+#[cfg(feature = "serde")]
+impl<'de> Deserialize<'de> for Percent {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        u8::deserialize(deserializer)
+            .and_then(|value| Self::try_from(value).map_err(|_| D::Error::invalid_value(Unexpected::Unsigned(value.into()), &"value between 0 and 100 (inclusive)")))
+    }
+}
+
+#[cfg(feature = "serde")]
+impl Serialize for Percent {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.0.serialize(serializer)
+    }
+}
+
+//TODO check bounds on deserialize
 
 /// A type implementing this trait can estimate the progress of a task.
 pub trait Progress {
