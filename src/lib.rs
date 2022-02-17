@@ -4,7 +4,10 @@
 #![forbid(unsafe_code)]
 
 use {
-    std::convert::TryFrom,
+    std::{
+        convert::TryFrom,
+        future::Future,
+    },
     async_trait::async_trait,
 };
 #[cfg(feature = "async-proto")] use async_proto::Protocol;
@@ -128,4 +131,13 @@ pub trait Task<T>: Progress + Sized {
     ///
     /// If it doesn't, the current task is returned, which can be checked using the `Progress` trait, then run again to continue.
     async fn run(self) -> Result<T, Self>;
+}
+
+/// Convenience function for working with `Task<Result>`.
+pub async fn transpose<'a, Task, T, E>(fut: impl Future<Output = Result<Result<T, Task>, E>>) -> Result<Result<T, E>, Task> {
+    match fut.await {
+        Ok(Ok(x)) => Ok(Ok(x)),
+        Ok(Err(step)) => Err(step),
+        Err(e) => Ok(Err(e)),
+    }
 }

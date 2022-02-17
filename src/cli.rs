@@ -95,19 +95,26 @@ impl Cli {
     ///
     /// The task's `Display` implementation is called each time the progress bar is updated. Returning text that's wider than the remainder of the terminal after the 7-columns-wide percentage indicator or contains newlines or other control codes may cause the entire `Cli` to display incorrectly.
     pub async fn run<T>(&self, mut task: impl Task<T> + fmt::Display, done_label: impl fmt::Display) -> crossterm::Result<T> {
-        let line = self.new_line(format_args!("[  0%] {}", task)).await?;
+        let line = self.new_line(format!("[  0%] {}", task)).await?;
         loop {
             match task.run().await {
                 Ok(result) => {
-                    line.replace(format_args!("[done] {}", done_label)).await?;
+                    line.replace(format!("[done] {}", done_label)).await?;
                     break Ok(result)
                 }
                 Err(next_task) => {
                     task = next_task;
-                    line.replace(format_args!("[{:>3}%] {}", u8::from(task.progress()), task)).await?;
+                    line.replace(format!("[{:>3}%] {}", u8::from(task.progress()), task)).await?;
                 }
             }
         }
+    }
+
+    /// Prevents this CLI from drawing to the terminal for the lifetime of the return value.
+    ///
+    /// This can be useful if you're spawning a subprocess that uses the alternate screen. If the subprocess in question writes to the primary screen, it will most likely cause the `Cli` to display incorrectly.
+    pub async fn lock<'a>(&'a self) -> impl Send + Sync + 'a {
+        self.state.lock().await
     }
 }
 
