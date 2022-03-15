@@ -91,15 +91,28 @@ impl Cli {
 
     /// Runs the given task to completion, displaying its progress in a new line below any existing lines.
     ///
+    /// After the task is done, `done_label` is displayed as the final label of the task line. To have the label depend on the task's output, use [`Cli::run_with`].
+    ///
     /// # Correctness
     ///
-    /// The task's `Display` implementation is called each time the progress bar is updated. Returning text that's wider than the remainder of the terminal after the 7-columns-wide percentage indicator or contains newlines or other control codes may cause the entire `Cli` to display incorrectly.
-    pub async fn run<T>(&self, mut task: impl Task<T> + fmt::Display, done_label: impl fmt::Display) -> crossterm::Result<T> {
+    /// The task's `Display` implementation is called each time the progress bar is updated. Returning text that's wider than the remainder of the terminal after the 7-columns-wide percentage indicator or contains newlines or other control codes may cause the entire `Cli` to display incorrectly. The same restriction applies to `done_label`.
+    pub async fn run<T>(&self, task: impl Task<T> + fmt::Display, done_label: impl fmt::Display) -> crossterm::Result<T> {
+        self.run_with(task, |_| done_label).await
+    }
+
+    /// Runs the given task to completion, displaying its progress in a new line below any existing lines.
+    ///
+    /// After the task is done, `done_label` is called with a reference to the task's output to display the final label of the task line.
+    ///
+    /// # Correctness
+    ///
+    /// The task's `Display` implementation is called each time the progress bar is updated. Returning text that's wider than the remainder of the terminal after the 7-columns-wide percentage indicator or contains newlines or other control codes may cause the entire `Cli` to display incorrectly. The same restriction applies to `done_label`.
+    pub async fn run_with<T, A: Task<T> + fmt::Display, L: fmt::Display, F: FnOnce(&T) -> L>(&self, mut task: A, done_label: F) -> crossterm::Result<T> {
         let line = self.new_line(format!("[  0%] {}", task)).await?;
         loop {
             match task.run().await {
                 Ok(result) => {
-                    line.replace(format!("[done] {}", done_label)).await?;
+                    line.replace(format!("[done] {}", done_label(&result))).await?;
                     break Ok(result)
                 }
                 Err(next_task) => {
