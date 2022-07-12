@@ -133,6 +133,29 @@ pub trait Task<T>: Progress + Sized {
     async fn run(self) -> Result<T, Self>;
 }
 
+/// A [`Task`] that simply runs a given future to completion, without giving intermittent progress updates.
+#[derive(Debug)]
+pub struct SimpleTask<T: Future + Send>(pub T);
+
+impl<T: Future + Send> From<T> for SimpleTask<T> {
+    fn from(inner: T) -> Self {
+        Self(inner)
+    }
+}
+
+impl<T: Future + Send> Progress for SimpleTask<T> {
+    fn progress(&self) -> Percent {
+        Percent::default()
+    }
+}
+
+#[async_trait]
+impl<T: Future + Send> Task<T::Output> for SimpleTask<T> {
+    async fn run(self) -> Result<T::Output, Self> {
+        Ok(self.0.await)
+    }
+}
+
 /// Convenience function for working with `Task<Result>`.
 pub async fn transpose<'a, Task, T, E>(fut: impl Future<Output = Result<Result<T, Task>, E>>) -> Result<Result<T, E>, Task> {
     match fut.await {
