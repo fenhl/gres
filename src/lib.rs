@@ -6,6 +6,7 @@
 use {
     std::{
         convert::TryFrom,
+        fmt,
         future::Future,
     },
     async_trait::async_trait,
@@ -135,24 +136,29 @@ pub trait Task<T>: Progress + Sized {
 
 /// A [`Task`] that simply runs a given future to completion, without giving intermittent progress updates.
 #[derive(Debug)]
-pub struct SimpleTask<T: Future + Send>(pub T);
+pub struct SimpleTask<'a, T: Future + Send> {
+    /// The future to run.
+    pub fut: T,
+    /// Used as the task's [`Display`](fmt::Display) implementation.
+    pub label: &'a str,
+}
 
-impl<T: Future + Send> From<T> for SimpleTask<T> {
-    fn from(inner: T) -> Self {
-        Self(inner)
+impl<'a, T: Future + Send> fmt::Display for SimpleTask<'a, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.label.fmt(f)
     }
 }
 
-impl<T: Future + Send> Progress for SimpleTask<T> {
+impl<'a, T: Future + Send> Progress for SimpleTask<'a, T> {
     fn progress(&self) -> Percent {
         Percent::default()
     }
 }
 
 #[async_trait]
-impl<T: Future + Send> Task<T::Output> for SimpleTask<T> {
+impl<'a, T: Future + Send> Task<T::Output> for SimpleTask<'a, T> {
     async fn run(self) -> Result<T::Output, Self> {
-        Ok(self.0.await)
+        Ok(self.fut.await)
     }
 }
 
