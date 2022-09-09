@@ -163,7 +163,7 @@ impl<'a, T: Future + Send> Task<T::Output> for SimpleTask<'a, T> {
 }
 
 /// Convenience function for working with `Task<Result>`.
-pub async fn transpose<'a, Task, T, E>(fut: impl Future<Output = Result<Result<T, Task>, E>>) -> Result<Result<T, E>, Task> {
+pub async fn transpose<Task, T, E>(fut: impl Future<Output = Result<Result<T, Task>, E>>) -> Result<Result<T, E>, Task> {
     match fut.await {
         Ok(Ok(x)) => Ok(Ok(x)),
         Ok(Err(step)) => Err(step),
