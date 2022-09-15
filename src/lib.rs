@@ -47,8 +47,10 @@ impl Percent {
     /// Returns the percentage representing the fraction `num / denom`, rounded down.
     ///
     /// Truncates the result to fit within the range.
+    ///
+    /// `0 / 0` is interpreted as 100%.
     pub fn fraction(num: usize, denom: usize) -> Percent {
-        Percent::try_from(100 * num / denom).unwrap_or(Percent::MAX)
+        Percent::try_from(num.saturating_mul(100).checked_div(denom).unwrap_or(100)).unwrap_or(Percent::MAX)
     }
 }
 
