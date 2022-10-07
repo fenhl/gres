@@ -11,7 +11,8 @@ cli = ["crossterm", "tokio"]
 async-trait = "0.1"
 
 [dependencies.async-proto]
-version = "0.15"
+git = "https://github.com/fenhl/async-proto"
+branch = "git-deps"
 optional = true
 
 [dependencies.crossterm]
