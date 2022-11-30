@@ -1,6 +1,6 @@
 [package]
 name = "gres"
-version = "0.2.2"
+version = "0.2.3"
 authors = ["Fenhl <fenhl@fenhl.net>"]
 edition = "2021"
 
@@ -11,7 +11,7 @@ cli = ["crossterm", "tokio"]
 async-trait = "0.1"
 
 [dependencies.async-proto]
-version = "0.15"
+version = "0.16"
 optional = true
 
 [dependencies.crossterm]
