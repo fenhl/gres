@@ -72,7 +72,7 @@ impl Cli {
             }
             Equal => crossterm::execute!(
                 state.stdout,
-                crossterm::cursor::MoveToColumn(1), // columns start at 1, at least on Windows
+                crossterm::cursor::MoveToColumn(0),
                 crossterm::style::Print(initial_text),
             )?,
             Greater => {
@@ -176,7 +176,7 @@ impl<'a> LineHandle<'a> {
             }
             Equal => crossterm::execute!(
                 state.stdout,
-                crossterm::cursor::MoveToColumn(1), // columns start at 1, at least on Windows
+                crossterm::cursor::MoveToColumn(0),
                 crossterm::style::Print(new_text),
                 crossterm::terminal::Clear(ClearType::UntilNewLine),
             )?,
