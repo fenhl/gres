@@ -8,6 +8,7 @@ use {
             Stdout,
             stdout,
         },
+        mem,
     },
     crossterm::terminal::{
         ClearType,
@@ -193,16 +194,17 @@ impl Cli {
     ///
     /// The task's `Display` implementation is called each time the progress bar is updated. Returning text that's wider than the remainder of the terminal after the 7-columns-wide percentage indicator or contains newlines or other control codes may cause the entire `Cli` to display incorrectly. The same restriction applies to `done_label`.
     pub async fn run_with<T, A: Task<T> + fmt::Display, L: fmt::Display, F: FnOnce(&T) -> L>(&self, mut task: A, done_label: F) -> crossterm::Result<T> {
-        let line = self.new_line(format!("[  0%] {}", task)).await?;
+        let line = self.new_line(format!("[  0%] {task}")).await?;
         loop {
             match task.run().await {
                 Ok(result) => {
                     line.replace(format!("[done] {}", done_label(&result))).await?;
+                    line.drop_async().await;
                     break Ok(result)
                 }
                 Err(next_task) => {
                     task = next_task;
-                    line.replace(format!("[{:>3}%] {}", u8::from(task.progress()), task)).await?;
+                    line.replace(format!("[{:>3}%] {task}", u8::from(task.progress()))).await?;
                 }
             }
         }
@@ -263,12 +265,26 @@ impl<'a> LineHandle<'a> {
         state.lines.iter_mut().find(|line| line.id == self.id).expect("line not found").text = new_text.to_string();
         state.update_line(self.id).await
     }
+
+    /// Mark this line as finalized. It can no longer be edited, and may scroll off the top of the screen.
+    ///
+    /// Lines can only be added if there is room on the screen. If a new line is requested and there is no room, the topmost finalized line that's below an interactive line will be moved above all interactive lines.
+    pub async fn drop_async(self) {
+        let mut state = self.cli.state.lock().await;
+        state.lines.iter_mut().find(|line| line.id == self.id).expect("line not found").finalized = true;
+        let _ = state.finalize_notifier.send(());
+        mem::forget(self);
+    }
 }
 
 impl<'a> Drop for LineHandle<'a> {
     /// Mark this line as finalized. It can no longer be edited, and may scroll off the top of the screen.
     ///
     /// Lines can only be added if there is room on the screen. If a new line is requested and there is no room, the topmost finalized line that's below an interactive line will be moved above all interactive lines.
+    ///
+    /// # Panics
+    ///
+    /// If called from inside an async context. In that situation, `LineHandle::drop_async` should be used instead.
     fn drop(&mut self) {
         let mut state = self.cli.state.blocking_lock();
         state.lines.iter_mut().find(|line| line.id == self.id).expect("line not found").finalized = true;
