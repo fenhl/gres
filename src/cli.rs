@@ -4,6 +4,7 @@ use {
     std::{
         cmp::Ordering::*,
         fmt,
+        future::Future,
         io::{
             Stdout,
             stdout,
@@ -95,81 +96,84 @@ impl Cli {
     /// # Correctness
     ///
     /// If `initial_text` is wider than the terminal or contains newlines or other control codes, the entire `Cli` may display incorrectly.
-    pub async fn new_line<'a>(&'a self, initial_text: impl fmt::Display) -> crossterm::Result<LineHandle<'a>> {
-        // make room for the line
-        loop {
-            let terminal_height = crossterm::terminal::size()?.1;
-            let mut state = self.state.lock();
-            if u16::try_from(state.lines.len()).expect("terminal too large") < terminal_height {
-                // There is room on the terminal for a new line.
-                break
-            }
-            if let Some(&LineState { finalized: true, id, .. }) = state.lines.get(0) {
-                // There is a finalized line at the top of the CLI. Forget about this line, letting it scroll off the top of the screen.
-                if state.selected_line == Some(id) {
-                    if let Some(next_line) = state.lines.get(1) {
-                        let next_id = next_line.id;
-                        crossterm::execute!(
-                            &mut state.stdout,
-                            crossterm::cursor::MoveToNextLine(1),
-                        )?;
-                        state.selected_line = Some(next_id);
-                    } else {
-                        crossterm::execute!(
-                            &mut state.stdout,
-                            crossterm::style::Print("\r\n"),
-                        )?;
-                        state.selected_line = None;
+    pub fn new_line<'a>(&'a self, initial_text: impl fmt::Display) -> impl Future<Output = crossterm::Result<LineHandle<'a>>> + Send {
+        let text = initial_text.to_string();
+        async {
+            // make room for the line
+            loop {
+                let terminal_height = crossterm::terminal::size()?.1;
+                let mut notifications = {
+                    let mut state = self.state.lock();
+                    if u16::try_from(state.lines.len()).expect("terminal too large") < terminal_height {
+                        // There is room on the terminal for a new line.
+                        break
                     }
+                    if let Some(&LineState { finalized: true, id, .. }) = state.lines.get(0) {
+                        // There is a finalized line at the top of the CLI. Forget about this line, letting it scroll off the top of the screen.
+                        if state.selected_line == Some(id) {
+                            if let Some(next_line) = state.lines.get(1) {
+                                let next_id = next_line.id;
+                                crossterm::execute!(
+                                    &mut state.stdout,
+                                    crossterm::cursor::MoveToNextLine(1),
+                                )?;
+                                state.selected_line = Some(next_id);
+                            } else {
+                                crossterm::execute!(
+                                    &mut state.stdout,
+                                    crossterm::style::Print("\r\n"),
+                                )?;
+                                state.selected_line = None;
+                            }
+                        }
+                        state.lines.remove(0);
+                        continue
+                    }
+                    if let Some(idx) = state.lines.iter().position(|line| line.finalized) {
+                        // There is a finalized line below some unfinalized lines. Rearrange the lines to move the finalized line to the top so it can be forgotten about in the next iteration of the loop.
+                        let line = state.lines.remove(idx);
+                        state.lines.insert(0, line);
+                        for line_id in state.lines[..=idx].iter().map(|line| line.id).collect::<Vec<_>>() {
+                            state.update_line(line_id)?;
+                        }
+                        continue
+                    }
+                    // No room and no finalized lines. Wait until a line becomes finalized.
+                    state.finalize_notifier.subscribe()
+                };
+                match notifications.recv().await {
+                    Ok(()) | Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(broadcast::error::RecvError::Closed) => panic!("CLI notifier dropped"),
                 }
-                state.lines.remove(0);
-                continue
+                //TODO also listen for terminal resize events
             }
-            if let Some(idx) = state.lines.iter().position(|line| line.finalized) {
-                // There is a finalized line below some unfinalized lines. Rearrange the lines to move the finalized line to the top so it can be forgotten about in the next iteration of the loop.
-                let line = state.lines.remove(idx);
-                state.lines.insert(0, line);
-                for line_id in state.lines[..=idx].iter().map(|line| line.id).collect::<Vec<_>>() {
-                    state.update_line(line_id)?;
-                }
-                continue
-            }
-            // No room and no finalized lines. Wait until a line becomes finalized.
-            let mut notifications = state.finalize_notifier.subscribe();
-            drop(state);
-            match notifications.recv().await {
-                Ok(()) | Err(broadcast::error::RecvError::Lagged(_)) => continue,
-                Err(broadcast::error::RecvError::Closed) => panic!("CLI notifier dropped"),
-            }
-            //TODO also listen for terminal resize events
-        }
-        let mut state = self.state.lock();
-        // get an unused ID
-        let mut id = state.new_line_id;
-        state.new_line_id = LineId(state.new_line_id.0.wrapping_add(1));
-        while state.lines.iter().any(|line| line.id == id) {
-            id = state.new_line_id;
+            let mut state = self.state.lock();
+            // get an unused ID
+            let mut id = state.new_line_id;
             state.new_line_id = LineId(state.new_line_id.0.wrapping_add(1));
+            while state.lines.iter().any(|line| line.id == id) {
+                id = state.new_line_id;
+                state.new_line_id = LineId(state.new_line_id.0.wrapping_add(1));
+            }
+            // print the new line
+            if let Some(selected_line) = state.selected_line {
+                // Moves the cursor to the end of the lines managed by this value.
+                let selected_idx = state.lines.iter().position(|line| line.id == selected_line).expect("line not found");
+                let line_diff = state.lines.len() - 1 - selected_idx;
+                crossterm::execute!(
+                    state.stdout,
+                    crossterm::cursor::MoveToNextLine(line_diff.try_into().expect("terminal too large")),
+                    crossterm::style::Print("\r\n"),
+                )?;
+                state.selected_line = None;
+            }
+            state.lines.push(LineState {
+                finalized: false,
+                id, text,
+            });
+            state.update_line(id)?;
+            Ok(LineHandle { id, cli: self })
         }
-        // print the new line
-        if let Some(selected_line) = state.selected_line {
-            // Moves the cursor to the end of the lines managed by this value.
-            let selected_idx = state.lines.iter().position(|line| line.id == selected_line).expect("line not found");
-            let line_diff = state.lines.len() - 1 - selected_idx;
-            crossterm::execute!(
-                state.stdout,
-                crossterm::cursor::MoveToNextLine(line_diff.try_into().expect("terminal too large")),
-                crossterm::style::Print("\r\n"),
-            )?;
-            state.selected_line = None;
-        }
-        state.lines.push(LineState {
-            finalized: false,
-            text: initial_text.to_string(),
-            id,
-        });
-        state.update_line(id)?;
-        Ok(LineHandle { id, cli: self })
     }
 
     /// Runs the given task to completion, displaying its progress in a new line below any existing lines.
