@@ -8,17 +8,14 @@ use {
             Stdout,
             stdout,
         },
-        mem,
     },
     crossterm::terminal::{
         ClearType,
         disable_raw_mode,
         enable_raw_mode,
     },
-    tokio::sync::{
-        Mutex,
-        broadcast,
-    },
+    parking_lot::Mutex,
+    tokio::sync::broadcast,
     crate::Task,
 };
 
@@ -32,7 +29,7 @@ struct State {
 }
 
 impl State {
-    async fn update_line(&mut self, id: LineId) -> crossterm::Result<()> {
+    fn update_line(&mut self, id: LineId) -> crossterm::Result<()> {
         let (self_idx, line) = self.lines.iter().enumerate().find(|(_, line)| line.id == id).expect("line not found");
         let selected_idx = self.selected_line.map_or_else(|| self.lines.len(), |selected_line| self.lines.iter().position(|line| line.id == selected_line).expect("line not found"));
         match self_idx.cmp(&selected_idx) {
@@ -102,7 +99,7 @@ impl Cli {
         // make room for the line
         loop {
             let terminal_height = crossterm::terminal::size()?.1;
-            let mut state = self.state.lock().await;
+            let mut state = self.state.lock();
             if u16::try_from(state.lines.len()).expect("terminal too large") < terminal_height {
                 // There is room on the terminal for a new line.
                 break
@@ -133,7 +130,7 @@ impl Cli {
                 let line = state.lines.remove(idx);
                 state.lines.insert(0, line);
                 for line_id in state.lines[..=idx].iter().map(|line| line.id).collect::<Vec<_>>() {
-                    state.update_line(line_id).await?;
+                    state.update_line(line_id)?;
                 }
                 continue
             }
@@ -146,7 +143,7 @@ impl Cli {
             }
             //TODO also listen for terminal resize events
         }
-        let mut state = self.state.lock().await;
+        let mut state = self.state.lock();
         // get an unused ID
         let mut id = state.new_line_id;
         state.new_line_id = LineId(state.new_line_id.0.wrapping_add(1));
@@ -171,7 +168,7 @@ impl Cli {
             text: initial_text.to_string(),
             id,
         });
-        state.update_line(id).await?;
+        state.update_line(id)?;
         Ok(LineHandle { id, cli: self })
     }
 
@@ -198,23 +195,15 @@ impl Cli {
         loop {
             match task.run().await {
                 Ok(result) => {
-                    line.replace(format!("[done] {}", done_label(&result))).await?;
-                    line.drop_async().await;
+                    line.replace(format!("[done] {}", done_label(&result)))?;
                     break Ok(result)
                 }
                 Err(next_task) => {
                     task = next_task;
-                    line.replace(format!("[{:>3}%] {task}", u8::from(task.progress()))).await?;
+                    line.replace(format!("[{:>3}%] {task}", u8::from(task.progress())))?;
                 }
             }
         }
-    }
-
-    /// Prevents this CLI from drawing to the terminal for the lifetime of the return value.
-    ///
-    /// This can be useful if you're spawning a subprocess that uses the alternate screen. If the subprocess in question writes to the primary screen, it will most likely cause the `Cli` to display incorrectly.
-    pub async fn lock<'a>(&'a self) -> impl Send + Sync + 'a {
-        self.state.lock().await
     }
 }
 
@@ -260,20 +249,10 @@ impl<'a> LineHandle<'a> {
     /// # Correctness
     ///
     /// If `new_text` is wider than the terminal or contains newlines or other control codes, the entire `Cli` may display incorrectly.
-    pub async fn replace(&self, new_text: impl fmt::Display) -> crossterm::Result<()> {
-        let mut state = self.cli.state.lock().await;
+    pub fn replace(&self, new_text: impl fmt::Display) -> crossterm::Result<()> {
+        let mut state = self.cli.state.lock();
         state.lines.iter_mut().find(|line| line.id == self.id).expect("line not found").text = new_text.to_string();
-        state.update_line(self.id).await
-    }
-
-    /// Mark this line as finalized. It can no longer be edited, and may scroll off the top of the screen.
-    ///
-    /// Lines can only be added if there is room on the screen. If a new line is requested and there is no room, the topmost finalized line that's below an interactive line will be moved above all interactive lines.
-    pub async fn drop_async(self) {
-        let mut state = self.cli.state.lock().await;
-        state.lines.iter_mut().find(|line| line.id == self.id).expect("line not found").finalized = true;
-        let _ = state.finalize_notifier.send(());
-        mem::forget(self);
+        state.update_line(self.id)
     }
 }
 
@@ -281,12 +260,8 @@ impl<'a> Drop for LineHandle<'a> {
     /// Mark this line as finalized. It can no longer be edited, and may scroll off the top of the screen.
     ///
     /// Lines can only be added if there is room on the screen. If a new line is requested and there is no room, the topmost finalized line that's below an interactive line will be moved above all interactive lines.
-    ///
-    /// # Panics
-    ///
-    /// If called from inside an async context. In that situation, `LineHandle::drop_async` should be used instead.
     fn drop(&mut self) {
-        let mut state = self.cli.state.blocking_lock();
+        let mut state = self.cli.state.lock();
         state.lines.iter_mut().find(|line| line.id == self.id).expect("line not found").finalized = true;
         let _ = state.finalize_notifier.send(());
     }
