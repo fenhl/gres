@@ -11,11 +11,11 @@ cli = ["crossterm", "parking_lot", "tokio"]
 async-trait = "0.1"
 
 [dependencies.async-proto]
-version = "0.16"
+version = "0.17"
 optional = true
 
 [dependencies.crossterm]
-version = "0.25"
+version = "0.27"
 optional = true
 
 [dependencies.parking_lot]

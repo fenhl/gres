@@ -29,7 +29,7 @@ mod std_types;
 ///
 /// Guarantees that the value will be between 0 and 100 inclusive.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-#[cfg_attr(feature = "async-proto", derive(Protocol), async_proto(via = u8, map_err = async_proto::ReadError::UnknownVariant8))]
+#[cfg_attr(feature = "async-proto", derive(Protocol), async_proto(via = u8, map_err = async_proto::ReadErrorKind::UnknownVariant8))]
 #[cfg_attr(feature = "serde", derive(Serialize), serde(transparent))]
 pub struct Percent(u8);
 

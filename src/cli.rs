@@ -16,7 +16,10 @@ use {
         enable_raw_mode,
     },
     parking_lot::Mutex,
-    tokio::sync::broadcast,
+    tokio::{
+        io,
+        sync::broadcast,
+    },
     crate::Task,
 };
 
@@ -30,7 +33,7 @@ struct State {
 }
 
 impl State {
-    fn update_line(&mut self, id: LineId) -> crossterm::Result<()> {
+    fn update_line(&mut self, id: LineId) -> io::Result<()> {
         let (self_idx, line) = self.lines.iter().enumerate().find(|(_, line)| line.id == id).expect("line not found");
         let selected_idx = self.selected_line.map_or_else(|| self.lines.len(), |selected_line| self.lines.iter().position(|line| line.id == selected_line).expect("line not found"));
         match self_idx.cmp(&selected_idx) {
@@ -78,7 +81,7 @@ impl Cli {
     /// # Errors
     ///
     /// If the height of the terminal cannot be determined.
-    pub fn new() -> crossterm::Result<Self> {
+    pub fn new() -> io::Result<Self> {
         enable_raw_mode()?;
         Ok(Self {
             state: Mutex::new(State {
@@ -96,7 +99,7 @@ impl Cli {
     /// # Correctness
     ///
     /// If `initial_text` is wider than the terminal or contains newlines or other control codes, the entire `Cli` may display incorrectly.
-    pub fn new_line<'a>(&'a self, initial_text: impl fmt::Display) -> impl Future<Output = crossterm::Result<LineHandle<'a>>> + Send {
+    pub fn new_line<'a>(&'a self, initial_text: impl fmt::Display) -> impl Future<Output = io::Result<LineHandle<'a>>> + Send {
         let text = initial_text.to_string();
         async {
             // make room for the line
@@ -183,7 +186,7 @@ impl Cli {
     /// # Correctness
     ///
     /// The task's `Display` implementation is called each time the progress bar is updated. Returning text that's wider than the remainder of the terminal after the 7-columns-wide percentage indicator or contains newlines or other control codes may cause the entire `Cli` to display incorrectly. The same restriction applies to `done_label`.
-    pub async fn run<T>(&self, task: impl Task<T> + fmt::Display, done_label: impl fmt::Display) -> crossterm::Result<T> {
+    pub async fn run<T>(&self, task: impl Task<T> + fmt::Display, done_label: impl fmt::Display) -> io::Result<T> {
         self.run_with(task, |_| done_label).await
     }
 
@@ -194,7 +197,7 @@ impl Cli {
     /// # Correctness
     ///
     /// The task's `Display` implementation is called each time the progress bar is updated. Returning text that's wider than the remainder of the terminal after the 7-columns-wide percentage indicator or contains newlines or other control codes may cause the entire `Cli` to display incorrectly. The same restriction applies to `done_label`.
-    pub async fn run_with<T, A: Task<T> + fmt::Display, L: fmt::Display, F: FnOnce(&T) -> L>(&self, mut task: A, done_label: F) -> crossterm::Result<T> {
+    pub async fn run_with<T, A: Task<T> + fmt::Display, L: fmt::Display, F: FnOnce(&T) -> L>(&self, mut task: A, done_label: F) -> io::Result<T> {
         let line = self.new_line(format!("[  0%] {task}")).await?;
         loop {
             match task.run().await {
@@ -253,7 +256,7 @@ impl<'a> LineHandle<'a> {
     /// # Correctness
     ///
     /// If `new_text` is wider than the terminal or contains newlines or other control codes, the entire `Cli` may display incorrectly.
-    pub fn replace(&self, new_text: impl fmt::Display) -> crossterm::Result<()> {
+    pub fn replace(&self, new_text: impl fmt::Display) -> io::Result<()> {
         let mut state = self.cli.state.lock();
         state.lines.iter_mut().find(|line| line.id == self.id).expect("line not found").text = new_text.to_string();
         state.update_line(self.id)
