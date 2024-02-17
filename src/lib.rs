@@ -1,8 +1,5 @@
 //! This library helps with estimating the progress of a task.
 
-#![deny(missing_docs, rust_2018_idioms, unused, unused_crate_dependencies, unused_import_braces, unused_lifetimes, unused_qualifications, warnings)]
-#![forbid(unsafe_code)]
-
 use {
     std::{
         convert::TryFrom,
