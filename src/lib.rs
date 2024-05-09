@@ -124,7 +124,7 @@ pub trait Progress {
 ///
 /// It also returns a value of type `T` when completed.
 #[async_trait]
-pub trait Task<T>: Progress + Sized {
+pub trait Task<T>: Sized {
     /// Runs the task until the next progress change.
     ///
     /// If this completes the task, the value is returned.

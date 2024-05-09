@@ -20,7 +20,10 @@ use {
         io,
         sync::broadcast,
     },
-    crate::Task,
+    crate::{
+        Progress,
+        Task,
+    },
 };
 
 #[derive(Debug)]
@@ -186,7 +189,7 @@ impl Cli {
     /// # Correctness
     ///
     /// The task's `Display` implementation is called each time the progress bar is updated. Returning text that's wider than the remainder of the terminal after the 7-columns-wide percentage indicator or contains newlines or other control codes may cause the entire `Cli` to display incorrectly. The same restriction applies to `done_label`.
-    pub async fn run<T>(&self, task: impl Task<T> + fmt::Display, done_label: impl fmt::Display) -> io::Result<T> {
+    pub async fn run<T>(&self, task: impl Progress + Task<T> + fmt::Display, done_label: impl fmt::Display) -> io::Result<T> {
         self.run_with(task, |_| done_label).await
     }
 
@@ -197,7 +200,7 @@ impl Cli {
     /// # Correctness
     ///
     /// The task's `Display` implementation is called each time the progress bar is updated. Returning text that's wider than the remainder of the terminal after the 7-columns-wide percentage indicator or contains newlines or other control codes may cause the entire `Cli` to display incorrectly. The same restriction applies to `done_label`.
-    pub async fn run_with<T, A: Task<T> + fmt::Display, L: fmt::Display, F: FnOnce(&T) -> L>(&self, mut task: A, done_label: F) -> io::Result<T> {
+    pub async fn run_with<T, A: Progress + Task<T> + fmt::Display, L: fmt::Display, F: FnOnce(&T) -> L>(&self, mut task: A, done_label: F) -> io::Result<T> {
         let line = self.new_line(format!("[  0%] {task}")).await?;
         loop {
             match task.run().await {
