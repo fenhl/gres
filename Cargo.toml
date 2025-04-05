@@ -2,7 +2,7 @@
 name = "gres"
 version = "0.3.0"
 authors = ["Fenhl <fenhl@fenhl.net>"]
-edition = "2021"
+edition = "2024"
 
 [lints.rust]
 missing_docs = "deny"
